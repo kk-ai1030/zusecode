@@ -18,3 +18,7 @@ example-*.md
 
 # Playwright MCP 运行日志
 .playwright-mcp/
+
+# Codex agent 文件（本地使用，不推送公开仓库）
+AGENTS.md
+.agents/
