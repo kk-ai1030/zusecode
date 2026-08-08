@@ -658,16 +658,13 @@ class ZuseCodeApp(App):
     @staticmethod
     def _make_banner(model: str = "", work_dir: str = "") -> RichText:
         t = RichText()
-        t.append("-----  |   |  -----  -----   ", style="bold color(99)")
+        t.append("\n", style="color(242)")
+        t.append("  ___   _  _   ___   ___   ", style="bold color(99)")
         t.append("ZuseCode v0.1.0\n", style="color(242)")
-        t.append("    /  |   |  /      /       ", style="bold color(99)")
+        t.append(" |_ /  | || |  (_-<  / -_)  ", style="bold color(99)")
         t.append(f"{model}\n" if model else "\n", style="color(242)")
-        t.append(r"   /   |   |  \---   |__     ", style="bold color(99)")
+        t.append(r" /__|   \_,_|  /__/  \___|  ", style="bold color(99)")
         t.append(work_dir, style="color(242)")
-        t.append("\n", style="color(242)")
-        t.append(r"  /    |   |      \      |   ", style="bold color(99)")
-        t.append("\n", style="color(242)")
-        t.append(r"-----  |___|  \---/  \___/   ", style="bold color(99)")
         return t
 
     def compose(self) -> ComposeResult:
