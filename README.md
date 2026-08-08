@@ -62,7 +62,3 @@ uv run python -m compileall zusecode tests   # 语法检查
 - `zusecode/teams/` — 多 Agent 协作后端
 - `zusecode/skills/` — 技能系统
 - `zusecode/hooks/` — 生命周期钩子
-
-## License
-
-见 `LICENSE`（如未提供，请咨询作者）。
