@@ -41,9 +41,15 @@ uv run zusecode --remote
 
 ## 配置
 
+首次使用先复制示例配置并填入 API key：
+
+```bash
+cp config.example.yaml config.yaml
+```
+
 配置按优先级合并（后者覆盖前者）：`~/.zusecode/config.yaml` → `<work_dir>/.zusecode/config.yaml` → `<work_dir>/.zusecode/config.local.yaml`。
 
-关键配置项包括 `providers`、`permission_mode`、`mcp_servers`、`hooks`、`worktree`、`sandbox` 等，可参考 `.zusecode/config.yaml.example`。
+关键配置项包括 `providers`（至少一个：`anthropic` / `openai` / `openai-compat`）、`permission_mode`、`mcp_servers`、`hooks`、`worktree`、`sandbox` 等，完整注释见 [`config.example.yaml`](config.example.yaml)。`config.yaml` 已被 `.gitignore` 排除，不会进入版本控制。
 
 ## 测试
 

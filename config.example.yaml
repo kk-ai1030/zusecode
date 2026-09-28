@@ -1,0 +1,88 @@
+# ZuseCode 配置示例
+#
+# 用法：
+#   1. cp config.example.yaml config.yaml
+#   2. 填入你的 API key（只保留你实际要用的 provider 即可）
+#
+# 注意：config.yaml 已被 .gitignore 排除，不会进入版本控制；
+#      也可以把配置放到 ~/.zusecode/config.yaml 作为跨项目的用户级默认。
+#
+# 配置按优先级合并（后者覆盖前者）：
+#   ~/.zusecode/config.yaml  →  <work_dir>/.zusecode/config.yaml  →  <work_dir>/.zusecode/config.local.yaml
+
+# ── 模型供应商（至少配置一个）────────────────────────────────
+# protocol 三选一：
+#   anthropic     — 走原生 /v1/messages 协议（Claude 系）
+#   openai        — 走 OpenAI Responses / Chat Completions（OpenAI 官方）
+#   openai-compat — 任何 OpenAI 兼容端点（DeepSeek / Kimi / GLM / 代理网关等）
+providers:
+  # ── Anthropic Claude ──────────────────────────────────────
+  - name: claude
+    protocol: anthropic
+    base_url: https://api.anthropic.com/v1
+    model: claude-sonnet-4-5
+    api_key: ""                # ← 填入你的 API key
+    thinking: false            # 设为 true 启用扩展思考
+
+  # ── OpenAI ────────────────────────────────────────────────
+  - name: openai
+    protocol: openai
+    base_url: https://api.openai.com/v1
+    model: gpt-4o-mini
+    api_key: ""                # ← 填入你的 API key
+
+  # ── DeepSeek（OpenAI 兼容）────────────────────────────────
+  - name: deepseek
+    protocol: openai-compat
+    base_url: https://api.deepseek.com/v1
+    model: deepseek-chat
+    api_key: ""                # ← 填入你的 API key
+
+  # ── 可选：显式指定上下文窗口与最大输出（不填则自动解析）────
+  # context_window: 0           # 0 = 走自动拉取 / 映射表 / 默认值
+  # max_output_tokens: 0
+
+# ── 权限模式 ────────────────────────────────────────────────
+# default           — 每个写操作/命令都询问（最安全）
+# acceptEdits       — 自动接受文件编辑，命令仍需确认
+# plan              — 计划模式，只读不改
+# bypassPermissions — 全部放行（仅在你信任的项目里使用）
+permission_mode: default
+
+# ── MCP 服务器（可选）───────────────────────────────────────
+# 每个 server 二选一：本地进程（command + args）或远程端点（url + headers）
+mcp_servers: []
+  # - name: filesystem
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+  #   env:
+  #     SOME_TOKEN: ""        # 该 server 专属环境变量
+  #
+  # - name: remote-tools
+  #   url: https://example.com/mcp
+  #   headers:
+  #     Authorization: "Bearer your-token"
+
+# ── 生命周期钩子（可选）─────────────────────────────────────
+# 事件：session_start / turn_start / pre_tool_use / post_tool_use /
+#       pre_send / post_receive / turn_end / session_end / startup
+# 动作：command（子进程）/ prompt（注入下一次请求）/ http / agent
+hooks: []
+
+# ── 子 Agent 与协作（可选）──────────────────────────────────
+enable_fork: true                  # 允许 fork 子 Agent 继承当前上下文
+enable_verification_agent: false   # 额外的验证 Agent
+teammate_mode: ""                  # 多 Agent 团队后端："" | "tmux" | "iterm"（空=进程内）
+enable_coordinator_mode: false     # 协调者模式：主 Agent 只做调度
+
+# ── git worktree 隔离（可选）────────────────────────────────
+worktree:
+  symlink_directories: ["node_modules", ".venv", "vendor"]
+  stale_cleanup_interval: 3600
+  stale_cutoff_hours: 24
+
+# ── OS 级沙箱（可选，Linux/macOS 支持）──────────────────────
+sandbox:
+  enabled: false
+  auto_allow: false       # 沙箱内的命令是否自动放行（跳过权限询问）
+  network_enabled: false  # 是否允许沙箱内访问网络
