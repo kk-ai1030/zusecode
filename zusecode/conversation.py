@@ -17,6 +17,9 @@ class ToolResultBlock:
     tool_use_id: str
     content: str
     is_error: bool = False
+    # 结构化 content block；填了就用它替代 content 发出去（见 serialization.py）。
+    # content 里仍保留等价文本，token 估算和 TUI 展示都走它。
+    content_blocks: list[dict[str, Any]] | None = None
 
 
 @dataclass

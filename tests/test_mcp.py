@@ -191,9 +191,24 @@ class TestMCPToolWrapper:
         mock_client = MagicMock(spec=MCPClient)
         wrapper = MCPToolWrapper("github", tool_def, mock_client)
 
-        assert wrapper.name == "mcp_github_search_issues"
+        # 分隔符是双下划线：服务器名和工具名自身允许带单下划线，
+        # 用单下划线做分隔就分不出边界了
+        assert wrapper.name == "mcp__github__search_issues"
         assert wrapper.category == "command"
         assert wrapper.description == "Search GitHub issues"
+
+    def test_name_sanitizes_illegal_chars(self) -> None:
+        from mcp import types as mcp_types
+        from zusecode.mcp.client import MCPClient
+        from zusecode.mcp.tool_wrapper import MCPToolWrapper
+
+        tool_def = mcp_types.Tool(
+            name="take-snapshot",
+            description="d",
+            inputSchema={"type": "object", "properties": {}},
+        )
+        wrapper = MCPToolWrapper("chrome-devtools", tool_def, MagicMock(spec=MCPClient))
+        assert wrapper.name == "mcp__chrome_devtools__take_snapshot"
 
     def test_get_schema_uses_original_input_schema(self) -> None:
         from mcp import types as mcp_types
@@ -213,7 +228,7 @@ class TestMCPToolWrapper:
         wrapper = MCPToolWrapper("srv", tool_def, mock_client)
 
         schema = wrapper.get_schema()
-        assert schema["name"] == "mcp_srv_search"
+        assert schema["name"] == "mcp__srv__search"
         assert schema["input_schema"] == input_schema
 
 # ===========================================================================
@@ -295,4 +310,4 @@ class TestMCPManagerPartialFailure:
 
         assert len(result.errors) == 1
         assert "bad" in result.errors[0]
-        assert registry.get("mcp_good_test_tool") is not None
+        assert registry.get("mcp__good__test_tool") is not None

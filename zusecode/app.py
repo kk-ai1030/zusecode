@@ -770,6 +770,10 @@ class ZuseCodeApp(App):
         self.registry.register(
             ToolSearchTool(self.registry, protocol=provider.protocol)
         )
+        # mcp_call 必须在 MCP 连接之前就注册好。等连上再按加载模式决定注不注册，
+        # 本身就是一次中途改动 tools[]，缓存前缀照样断。
+        from zusecode.tools.mcp_call import McpCallTool
+        self.registry.register(McpCallTool(self.registry))
         self.registry.register(AskUserTool())
 
         from zusecode.tools.exit_plan_mode import ExitPlanModeTool
@@ -1890,6 +1894,15 @@ class ZuseCodeApp(App):
             self._show_system_message(f"MCP warning: {err}")
         tools_after = len(self.registry.list_tools())
         mcp_tools = tools_after - tools_before
+        # 工具都在位了才算得准 schema 总量跟上下文窗口的比例
+        if self._selected_provider is not None:
+            from zusecode.mcp.loading_strategy import decide_and_apply
+
+            decide_and_apply(
+                self.registry,
+                base_url=self._selected_provider.base_url,
+                context_window=self._selected_provider.get_context_window(),
+            )
         server_count = len(connect_result.servers)
         if server_count > 0:
             self._mcp_server_info = (
@@ -1905,9 +1918,11 @@ class ZuseCodeApp(App):
                     section += srv_info.instructions
                 else:
                     # 回退：列出该服务器注册的工具名
+                    from zusecode.mcp.tool_wrapper import mcp_tool_name_prefix
+                    prefix = mcp_tool_name_prefix(srv_info.name)
                     tool_names = [
                         t.name for t in self.registry.list_tools()
-                        if t.name.startswith(f"mcp__{srv_info.name}__")
+                        if t.name.startswith(prefix)
                     ]
                     if tool_names:
                         section += "Available tools: " + ", ".join(tool_names)

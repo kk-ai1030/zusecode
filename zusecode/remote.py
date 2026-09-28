@@ -247,6 +247,8 @@ class RemoteServer:
         # 工具注册表
         self.registry = create_default_registry()
         self.registry.register(ToolSearchTool(self.registry, protocol=provider.protocol))
+        from zusecode.tools.mcp_call import McpCallTool
+        self.registry.register(McpCallTool(self.registry))
 
         # Skill 加载
         self.skill_loader = SkillLoader(work_dir)
@@ -360,6 +362,17 @@ class RemoteServer:
         for err in connect_result.errors:
             log.warning("MCP error: %s", err)
 
+        # 工具都在位了才算得准 schema 总量跟上下文窗口的比例
+        if self.providers:
+            from zusecode.mcp.loading_strategy import decide_and_apply
+
+            provider = self.providers[0]
+            decide_and_apply(
+                self.registry,
+                base_url=provider.base_url,
+                context_window=provider.get_context_window(),
+            )
+
         # 构建 MCP 指令（首次发送消息时注入 conversation）
         if connect_result.servers:
             parts = []
@@ -368,9 +381,11 @@ class RemoteServer:
                 if srv_info.instructions:
                     section += srv_info.instructions
                 else:
+                    from zusecode.mcp.tool_wrapper import mcp_tool_name_prefix
+                    prefix = mcp_tool_name_prefix(srv_info.name)
                     tool_names = [
                         t.name for t in self.registry.list_tools()
-                        if t.name.startswith(f"mcp__{srv_info.name}__")
+                        if t.name.startswith(prefix)
                     ]
                     if tool_names:
                         section += "Available tools: " + ", ".join(tool_names)

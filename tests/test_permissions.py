@@ -207,6 +207,8 @@ class TestRuleEngine:
         assert engine.evaluate("Bash", "npm test") is None
 
     def test_same_tier_last_wins(self) -> None:
+        # 旧语义已废弃：现在是 deny > ask > allow 的严格合并，
+        # 同一文件内书写顺序不参与裁决（见 test_deny_beats_allow_in_same_file）
         tmpdir = Path(tempfile.mkdtemp())
         rules_file = tmpdir / "rules.yaml"
         rules_file.write_text(yaml.dump([
@@ -214,7 +216,57 @@ class TestRuleEngine:
             {"rule": "Bash(git *)", "effect": "allow"},
         ]))
         engine = RuleEngine(project_rules_path=rules_file)
-        assert engine.evaluate("Bash", "git status") == "allow"
+        assert engine.evaluate("Bash", "git status") == "deny"
+
+    def test_deny_beats_allow_in_same_file(self) -> None:
+        """同一文件内的书写顺序不参与裁决，两种顺序都判 deny"""
+        for effects in (["deny", "allow"], ["allow", "deny"]):
+            tmpdir = Path(tempfile.mkdtemp())
+            rules_file = tmpdir / "rules.yaml"
+            rules_file.write_text(yaml.dump([
+                {"rule": "Bash(git *)", "effect": effects[0]},
+                {"rule": "Bash(git *)", "effect": effects[1]},
+            ]))
+            engine = RuleEngine(project_rules_path=rules_file)
+            assert engine.evaluate("Bash", "git status") == "deny"
+
+    def test_deny_beats_allow_across_files(self) -> None:
+        """deny 写在哪一层都压过其他层的 allow"""
+        for deny_tier in ("user", "project", "local"):
+            tmpdir = Path(tempfile.mkdtemp())
+            paths = {t: tmpdir / f"{t}.yaml" for t in ("user", "project", "local")}
+            for tier, path in paths.items():
+                effect = "deny" if tier == deny_tier else "allow"
+                path.write_text(yaml.dump([{"rule": "Bash(rm *)", "effect": effect}]))
+            engine = RuleEngine(
+                user_rules_path=paths["user"],
+                project_rules_path=paths["project"],
+                local_rules_path=paths["local"],
+            )
+            assert engine.evaluate("Bash", "rm -rf build/") == "deny"
+
+    def test_reuses_parsed_rules(self) -> None:
+        """文件没变动时复用上次的解析结果，不重复读盘"""
+        import os as _os
+
+        allow_rule = '- rule: "Bash(git *)"\n  effect: allow\n'
+        # 与 allow_rule 等长，用尾随空格补齐，YAML 解析时会被忽略
+        deny_rule_same_size = '- rule: "Bash(git *)"\n  effect: deny \n'
+        assert len(allow_rule) == len(deny_rule_same_size)
+
+        tmpdir = Path(tempfile.mkdtemp())
+        rules_file = tmpdir / "rules.yaml"
+        rules_file.write_text(allow_rule)
+        engine = RuleEngine(project_rules_path=rules_file)
+        assert engine.evaluate("Bash", "git push") == "allow"
+
+        # 偷偷把内容换成 deny，同时把 size 和 mtime 都还原成原样：
+        # 引擎看不出文件动过，应当继续用缓存里的解析结果
+        st = rules_file.stat()
+        rules_file.write_text(deny_rule_same_size)
+        _os.utime(rules_file, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+        assert engine.evaluate("Bash", "git push") == "allow"
 
     def test_higher_tier_wins(self) -> None:
         tmpdir = Path(tempfile.mkdtemp())

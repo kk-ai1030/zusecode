@@ -143,6 +143,7 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str, output_
     from zusecode.agents.trace import TraceManager
     from zusecode.tools.agent_tool import AgentTool
     from zusecode.tools.impl.tool_search import ToolSearchTool
+    from zusecode.tools.mcp_call import McpCallTool
     from zusecode.teams.manager import TeamManager
     from zusecode.teams.models import BackendType
     from zusecode.tools.team_create import TeamCreateTool
@@ -178,6 +179,7 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str, output_
     instructions = load_instructions(work_dir)
     registry = create_default_registry()
     registry.register(ToolSearchTool(registry, protocol=provider.protocol))
+    registry.register(McpCallTool(registry))
 
     agent = Agent(
         client=client,
@@ -226,6 +228,24 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str, output_
 
     registry.register(SyntheticOutputTool())
     registry.register(TaskStopTool(team_manager=team_manager))
+
+    # 连 MCP。放在所有内建工具注册完之后：MCP 工具的加载模式要按 schema 总量
+    # 跟上下文窗口比，得等工具都在位才算得准。
+    mcp_manager = None
+    if config.mcp_servers:
+        from zusecode.mcp import MCPManager
+        from zusecode.mcp.loading_strategy import decide_and_apply
+
+        mcp_manager = MCPManager()
+        mcp_manager.load_configs(config.mcp_servers)
+        connect_result = await mcp_manager.register_all_tools(registry)
+        for err in connect_result.errors:
+            print(f"MCP warning: {err}", file=sys.stderr)
+        decide_and_apply(
+            registry,
+            base_url=provider.base_url,
+            context_window=provider.get_context_window(),
+        )
 
     # coordinator 模式由配置决定，开了就从第一轮起收窄工具集
     if config.enable_coordinator_mode:
@@ -373,6 +393,14 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str, output_
         else:
             print(last_result, flush=True)
 
+    if mcp_manager is not None:
+        # 多个 stdio 服务器同时收尾时，底层的 anyio cancel scope 会互相打断并抛
+        # CancelledError。结果已经输出完了，这里不该因为收尾失败而带崩整个命令。
+        try:
+            await mcp_manager.shutdown()
+        except (Exception, asyncio.CancelledError):
+            pass
+
 
 def _parse_teammate_flags(args: list[str]) -> tuple[str, str] | None:
     """从 CLI 参数里解析队友 worker 模式。
@@ -423,6 +451,7 @@ async def _build_teammate_registry(
     from zusecode.tools.enter_worktree import EnterWorktreeTool
     from zusecode.tools.exit_worktree import ExitWorktreeTool
     from zusecode.tools.impl.tool_search import ToolSearchTool
+    from zusecode.tools.mcp_call import McpCallTool
     from zusecode.tools.install_skill import InstallSkillTool
     from zusecode.tools.load_skill import LoadSkill
     from zusecode.tools.send_message import SendMessageTool
@@ -435,6 +464,7 @@ async def _build_teammate_registry(
 
     registry = create_default_registry()
     registry.register(ToolSearchTool(registry, protocol=protocol))
+    registry.register(McpCallTool(registry))
     registry.register(SyntheticOutputTool())
 
     wt_manager = WorktreeManager(
@@ -466,6 +496,12 @@ async def _build_teammate_registry(
             result = await manager.register_all_tools(registry)
             for err in result.errors:
                 print(f"MCP warning: {err}", file=sys.stderr)
+            # 工具都在位了才算得准 schema 总量跟上下文窗口的比例
+            from zusecode.mcp.loading_strategy import decide_and_apply
+
+            decide_and_apply(
+                registry, base_url=base_url, context_window=context_window
+            )
         except Exception as e:  # MCP 连不上不应该拖垮队友进程
             print(f"MCP setup failed: {e}", file=sys.stderr)
 
@@ -539,6 +575,8 @@ async def _run_teammate(team_name: str, agent_name: str) -> None:
         team_name=team_name,
         agent_name=agent_name,
         mcp_servers=config.mcp_servers,
+        base_url=provider.base_url,
+        context_window=provider.get_context_window(),
     )
 
     checker = PermissionChecker(

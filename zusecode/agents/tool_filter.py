@@ -43,6 +43,9 @@ ASYNC_AGENT_ALLOWED_TOOLS: frozenset[str] = frozenset({
     "LoadSkill",
     "SyntheticOutput",
     "ToolSearch",
+    # ToolSearch 只负责把 schema 读出来，真正调用要靠 mcp_call，
+    # 两个得成对放行，否则子 Agent 看得见工具却调不动
+    "mcp_call",
     "EnterWorktree",
     "ExitWorktree",
 })

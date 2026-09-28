@@ -527,10 +527,20 @@ class Agent:
 
             deferred_names = self.registry.get_deferred_tool_names()
             if deferred_names:
+                # dispatch 模式下这些工具永远不会进 tools[]，必须额外告诉模型
+                # 调用要走 mcp_call，否则它读完 schema 也不知道从哪儿调
+                from zusecode.mcp.loading_strategy import McpLoadingMode
+
+                tail = (
+                    ", then invoke them with the mcp_call tool"
+                    if self.registry.mcp_loading_mode is McpLoadingMode.DISPATCH
+                    else " before calling them"
+                )
                 conversation.add_system_reminder(
                     "The following deferred tools are available via ToolSearch. "
                     "Their schemas are NOT loaded - use ToolSearch with "
-                    'query "select:<name>[,<name>...]" to load tool schemas before calling them:\n'
+                    'query "select:<name>[,<name>...]" to load tool schemas'
+                    + tail + ":\n"
                     + "\n".join(deferred_names)
                 )
 
@@ -703,6 +713,7 @@ class Agent:
                         tool_use_id=br.tool_id,
                         content=content,
                         is_error=br.result.is_error,
+                        content_blocks=br.result.content_blocks,
                     )
                 )
                 yield ToolResultEvent(
@@ -735,6 +746,7 @@ class Agent:
                         tool_use_id=tc.tool_id,
                         content=content,
                         is_error=result.is_error,
+                        content_blocks=result.content_blocks,
                     )
                 )
                 yield ToolResultEvent(
@@ -1096,10 +1108,20 @@ class Agent:
 
             deferred_names = self.registry.get_deferred_tool_names()
             if deferred_names:
+                # dispatch 模式下这些工具永远不会进 tools[]，必须额外告诉模型
+                # 调用要走 mcp_call，否则它读完 schema 也不知道从哪儿调
+                from zusecode.mcp.loading_strategy import McpLoadingMode
+
+                tail = (
+                    ", then invoke them with the mcp_call tool"
+                    if self.registry.mcp_loading_mode is McpLoadingMode.DISPATCH
+                    else " before calling them"
+                )
                 conversation.add_system_reminder(
                     "The following deferred tools are available via ToolSearch. "
                     "Their schemas are NOT loaded - use ToolSearch with "
-                    'query "select:<name>[,<name>...]" to load tool schemas before calling them:\n'
+                    'query "select:<name>[,<name>...]" to load tool schemas'
+                    + tail + ":\n"
                     + "\n".join(deferred_names)
                 )
 
@@ -1185,6 +1207,7 @@ class Agent:
                         tool_use_id=tc.tool_id,
                         content=content,
                         is_error=result.is_error,
+                        content_blocks=result.content_blocks,
                     )
                 )
 

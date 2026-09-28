@@ -6,6 +6,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+# 这两个工具是「按模式发不发」的，注册表按名字筛，名字集中在这里定义，
+# 免得注册表反向 import 具体实现造成循环依赖。
+TOOL_SEARCH_TOOL_NAME = "ToolSearch"
+MCP_CALL_TOOL_NAME = "mcp_call"
+
 SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".tox", ".mypy_cache"}
 
 # 单条工具结果进入对话历史前的溢写阈值：超过这个字符数就把完整内容写盘，
@@ -20,6 +25,11 @@ ToolCategory = Literal["read", "write", "command"]
 class ToolResult:
     output: str
     is_error: bool = False
+    # 需要把工具结果发成结构化 content block（而不是纯文本）时用它。
+    # 目前只有官方 Anthropic 端点下的 ToolSearch 会用到：它回的是
+    # tool_reference 块，由服务端把 schema 展开进上下文。填了这个字段时
+    # output 仍然保留一份人可读的等价文本，供 TUI 和日志展示。
+    content_blocks: list[dict[str, Any]] | None = None
 
 
 class Tool(ABC):

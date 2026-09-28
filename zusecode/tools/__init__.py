@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from zusecode.tools.base import Tool
+from zusecode.tools.base import (
+    MCP_CALL_TOOL_NAME,
+    TOOL_SEARCH_TOOL_NAME,
+    Tool,
+)
 
 
 class ToolRegistry:
@@ -10,6 +14,18 @@ class ToolRegistry:
         self._tools: dict[str, Tool] = {}
         self._disabled: set[str] = set()
         self._discovered: set[str] = set()
+        # MCP 工具的加载方式，由 mcp.loading_strategy 在连上服务器后写入。
+        # ToolSearch 靠它决定回什么、client 靠它决定要不要发 defer_loading。
+        # 没有 MCP 时保持 eager，行为等同于不延迟。
+        from zusecode.mcp.loading_strategy import McpLoadingMode
+
+        self.mcp_loading_mode: McpLoadingMode = McpLoadingMode.EAGER
+
+        # 检索和分发这两个工具要不要发给模型，由 apply_mode 在会话启动时算一次。
+        # 不每轮按「当前还有没有延迟工具」现算：工具可能被运行时禁用，现算会让
+        # tools[] 中途少一个，那就是一次数组变动，缓存前缀照样断。
+        self.expose_tool_search: bool = False
+        self.expose_mcp_call: bool = False
 
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
@@ -115,13 +131,33 @@ class ToolRegistry:
 
 
     def get_all_schemas(self, protocol: str = "anthropic") -> list[dict[str, Any]]:
+        from zusecode.mcp.loading_strategy import McpLoadingMode
+
+        # 官方端点走原生延迟：工具留在 tools[] 里但打上 defer_loading，由服务端
+        # 决定给不给模型看。这样即使发现了新工具，tools 数组的字节也不变。
+        # 其他端点只能把延迟工具整个藏起来，靠 mcp_call 兜。
+        native = (
+            self.mcp_loading_mode is McpLoadingMode.NATIVE
+            and protocol == "anthropic"
+        )
         schemas: list[dict[str, Any]] = []
         for name, tool in self._tools.items():
             if name in self._disabled:
                 continue
-            if getattr(tool, "should_defer", False) and name not in self._discovered:
+            # 检索和分发只在用得上的模式里发。eager 下没有延迟工具可搜、也不需要
+            # 分发，两个都发过去只是白占 token，还可能引诱模型去绕一圈。
+            if name == TOOL_SEARCH_TOOL_NAME and not self.expose_tool_search:
+                continue
+            if name == MCP_CALL_TOOL_NAME and not self.expose_mcp_call:
+                continue
+            deferred = (
+                getattr(tool, "should_defer", False) and name not in self._discovered
+            )
+            if deferred and not native:
                 continue
             base = tool.get_schema()
+            if deferred:
+                base = {**base, "defer_loading": True}
             if protocol in ("openai", "openai-compat"):
                 schemas.append({
                     "type": "function",

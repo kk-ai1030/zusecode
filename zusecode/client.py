@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 
 from zusecode.config import ProviderConfig
 from zusecode.conversation import ConversationManager
+from zusecode.mcp.loading_strategy import NATIVE_TOOL_SEARCH_BETA
 from zusecode.conversation_pairing import ensure_tool_pairing
 from zusecode.serialization import (
     build_anthropic_messages,
@@ -78,6 +79,15 @@ def _mark_last_tool_for_cache(tools: list[dict[str, Any]]) -> list[dict[str, Any
     last["cache_control"] = _EPHEMERAL
     marked[-1] = last
     return marked
+
+
+def needs_tool_search_beta(tools: list[dict[str, Any]]) -> bool:
+    """这批工具里有没有带 defer_loading 的。
+
+    只在真用到时才发 beta header：不认识它的端点收到会直接拒请求，而
+    dispatch / eager 两条路压根不需要它。
+    """
+    return any(t.get("defer_loading") for t in tools)
 
 
 class LLMError(Exception):
@@ -190,6 +200,13 @@ class AnthropicClient(LLMClient):
             }]
         if tools:
             kwargs["tools"] = _mark_last_tool_for_cache(tools)
+            # 工具带了 defer_loading 就必须带上这个 beta header，否则服务端不认
+            # 这个字段。只有官方端点会走到这里（见 mcp.loading_strategy）。
+            if needs_tool_search_beta(tools):
+                kwargs["extra_headers"] = {
+                    **kwargs.get("extra_headers", {}),
+                    "anthropic-beta": NATIVE_TOOL_SEARCH_BETA,
+                }
 
         if self.thinking:
             if _supports_adaptive_thinking(self.model):
